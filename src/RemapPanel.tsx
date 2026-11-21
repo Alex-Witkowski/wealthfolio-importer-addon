@@ -114,7 +114,7 @@ export function RemapPanel({
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <TickerSearchInput defaultQuery={name || isin} onSelect={setTarget} ctx={ctx} />
+          <TickerSearchInput defaultQuery={isin || name} onSelect={setTarget} ctx={ctx} />
           <Button size="sm" variant="ghost" className="h-8 shrink-0 gap-1 px-2" onClick={() => setTarget("custom")}>
             <Icons.Tag className="h-3 w-3" />
             {t("common.custom")}

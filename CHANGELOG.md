@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Trade Republic: capital reductions over an interim ISIN.** `CAPITAL_REDUCTION`, `RIGHTS` and `CREDIT` legs at the same time form an exchange like `SHARE_EXCHANGE`, also mixed (old ISIN out as `CAPITAL_REDUCTION`, interim ISIN in as `RIGHTS`; later interim out as `RIGHTS`, new ISIN in as `CREDIT`). The cost basis moves along; a leg without a partner stays unsupported.
+- **Trade Republic: lapsed subscription rights.** `CAPITAL_INCR_CASH` +n / −n on the same ISIN without cash and without other legs at the time of the −n cancel out (skipped as netted).
+- **Trade Republic: `WRITE_OFF`** is booked like `WORTHLESS` (SELL at 0).
+- **Trade Republic: `CASH/MANUAL` tax corrections** ("Tax Correction …") are booked like the other tax-only rows (TAX or CREDIT/TAX_REFUND).
+
+### Changed
+
+- **Security mapping search starts with the file's symbol (ISIN)** and only falls back to the name when there is none (mapping step and *Change*).
+
 ## [3.12.2] - 2026-11-09
 
 ### Changed

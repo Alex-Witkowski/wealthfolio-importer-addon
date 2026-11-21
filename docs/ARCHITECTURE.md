@@ -366,9 +366,12 @@ Nur in `transform.ts`:
 | `CASH/DIVIDEND`, `DISTRIBUTION`, `EXCHANGE` | **eine** P `DIVIDEND` in der Auszahlungswährung mit `amount` = Nettobetrag und `tax` = Quellensteuer (Wealthfolio weist Ertrag brutto = `amount + tax` und die Steuer aus; seit 2.6.0, vorher eigene `TAX`-Zeile); bei Fremdwährung steht der Originalbetrag nur im Kommentar („… (8.01 USD)“) → P `TRANSFER_OUT` (t+1s, netto) → C `TRANSFER_IN` (t+2s). Kommentar-Präfix je Typ: „Dividend" / „Distribution" / „Exchange distribution" (Tabelle `DIVIDEND_LIKE`) | `div-<txid>` |
 | `CASH/DIVIDEND`, `DISTRIBUTION`, `EXCHANGE` mit **negativem** Betrag | Storno: hebt die zeitlich nächste Zeile derselben ISIN mit gleichem Betrag und gleicher Steuer (umgekehrtes Vorzeichen) auf, beide → `skipped` (`netted`, `planSpecialRows`). Gehört sie zu einem `DIVIDEND_REINVESTMENT`, finanziert sie dessen BUY (siehe unten). Sonst → `skipped` (`missing`) | – |
 | `CASH/EARNINGS`, `PRE_DETERMINED_TAX_BASE` (Vorabpauschale), `SEC_ACCOUNT`, `TAX_OPTIMIZATION` | Betrag = `amount + tax` (meist nur `tax`): negativ → C `TAX`, positiv → C `CREDIT`/`TAX_REFUND`, 0 → `skipped` (`netted`) (Tabelle `TAX_ONLY`) | – |
+| `CASH/MANUAL` mit Beschreibung „Tax Correction …“ | wie `TAX_ONLY` mit Kommentar „Tax correction“; andere `MANUAL`-Zeilen bleiben `skipped` (`missing`) | – |
 | `CASH/REFERRAL` | C `CREDIT`/`BONUS` (netto nach Steuer) | – |
 | `CORPORATE_ACTION/SHARE_EXCHANGE`, `ADR_DISCONTINUATION`, `REORGANISATION`, `REVERSE_SPLIT` | P `TRANSFER_OUT` alte ISIN (t) + P `TRANSFER_IN` neue ISIN (t+1s), beide mit `unitPrice` = Einstandswert ÷ Stück (FIFO aus derselben Datei, `planSpecialRows`); Einstandswert unbekannt → beide Zeilen `skipped` (`missing`) | – (absichtlich ungepaart, siehe 16.2; `isExternal` → `metadata.flow.is_external`, damit Wealthfolio sie nicht als unvollständige Überträge meldet, #125) |
-| `CORPORATE_ACTION/WORTHLESS` | P `SELL` zu 0 (`fee` 0, `amount` 0), keine Cash-Umbuchung | – |
+| `CORPORATE_ACTION/CAPITAL_REDUCTION`, `RIGHTS`, `CREDIT` (verkettet) | Je Zeitpunkt genau eine abgehende und eine eingehende ISIN aus diesen Typen, auch gemischt (Kapitalherabsetzung: alte ISIN `CAPITAL_REDUCTION` −n, Interims-ISIN `RIGHTS` +m; später Interims-ISIN `RIGHTS` −k, neue ISIN `CREDIT` +k) → wie `SHARE_EXCHANGE`, Bezeichnung nach dem Typ der abgehenden Seite (Tabelle `CHAINED_EXCHANGE`). Ohne Partner → nicht unterstützt (`missing`) | – (wie oben) |
+| `CORPORATE_ACTION/CAPITAL_INCR_CASH` +n / −n | Bezugsrechte eingebucht und verfallen: gleiche ISIN, ohne Geld, zum Zeitpunkt der −n keine weitere Kapitalmaßnahme → beide `skipped` (`netted`). Sonst (ausgeübt, verkauft) → nicht unterstützt (`missing`) | – |
+| `CORPORATE_ACTION/WORTHLESS`, `WRITE_OFF` | P `SELL` zu 0 (`fee` 0, `amount` 0), keine Cash-Umbuchung | – |
 | `CORPORATE_ACTION/SPLIT` (gleiche ISIN, ±n Stück) | P `SPLIT` mit `amount` = Verhältnis (Bestand + n) ÷ Bestand, Bestand FIFO aus der Datei; ohne Bestand → `skipped` (`missing`) | – |
 | `CORPORATE_ACTION/STOCK_DIVIDEND` | P `DIVIDEND`/`DIVIDEND_IN_KIND` (`quantity` n, `unitPrice` = `price`, `amount` = n × `price`) – Wealthfolio bucht Ertrag + Zugang, ohne Bargeld. +n/−n-Umbuchung derselben ISIN → beide `skipped` (`netted`); ohne Preis → `skipped` (`missing`) | – |
 | `CORPORATE_ACTION/DIVIDEND_REINVESTMENT` + negative `CASH/DIVIDEND` derselben ISIN (≤ 7 Tage) | C `TRANSFER_OUT` (t−2s) → P `TRANSFER_IN` (t−1s) über den abgebuchten Betrag → P `BUY` n Stück; die negative Dividendenzeile erzeugt selbst nichts. Ohne Abbuchung → `skipped` (`missing`) | `buy-<txid>` |
@@ -1203,7 +1206,9 @@ Steuer-Stornos (`SEC_ACCOUNT` −x / +x) werden **nicht** verrechnet, sondern al
 |---|---|---|
 | `SHARE_EXCHANGE`, `ADR_DISCONTINUATION`, `REORGANISATION` | alte ISIN −n, neue ISIN +n zum selben Zeitpunkt | P `TRANSFER_OUT` (alte ISIN, t) + P `TRANSFER_IN` (neue ISIN, t+1s), **ohne** Gruppe; `unitPrice` beider Seiten = übertragener Einstandswert ÷ Stück |
 | `REVERSE_SPLIT` | alte ISIN −25.000, neue ISIN +38,46 | wie oben (ISIN wechselt, daher kein `SPLIT`) |
-| `WORTHLESS` | −15 Stück, wertlos ausgebucht | P `SELL` zu 0 (realisiert den Verlust), keine Cash-Umbuchung |
+| `CAPITAL_REDUCTION` + `RIGHTS`, dann `RIGHTS` + `CREDIT` | alte ISIN −10 / Interims-ISIN +3,3333; einen Tag später Interims-ISIN −3 / neue ISIN +3 (Rest wird als Spitze abgerechnet) | zwei Tauschvorgänge wie oben, der Einstandswert wandert über die Interims-ISIN |
+| `CAPITAL_INCR_CASH` | Bezugsrechte +10, Wochen später −10 | heben sich auf (`netted`) |
+| `WORTHLESS`, `WRITE_OFF` | −15 Stück, wertlos ausgebucht | P `SELL` zu 0 (realisiert den Verlust), keine Cash-Umbuchung |
 
 Entscheidungen bei der Umsetzung:
 

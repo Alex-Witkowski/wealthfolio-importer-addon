@@ -289,6 +289,8 @@ const en = {
         "Stock dividend reversal of {{shares}} {{name}} shares without a matching stock dividend.",
       rebookingReversal: "Rebooking by Trade Republic: cancels out with the stock dividend booked {{when}}.",
       rebookingOriginal: "Rebooking by Trade Republic: cancelled by the reversal booked {{when}}.",
+      rightsCredited: "Subscription rights credited and removed again {{when}} without new shares or cash; the two rows cancel out.",
+      rightsLapsed: "Subscription rights lapsed; cancels out with their credit booked {{when}}.",
       split:
         "Split of {{name}} ({{shares}} shares): the split ratio can't be derived because this file holds no {{symbol}} shares before the split.",
       stockDividendNoPrice: "Stock dividend of {{shares}} {{name}} shares without a value per share in the export.",
@@ -313,6 +315,9 @@ const en = {
         ADR_DISCONTINUATION: "ADR discontinuation",
         REORGANISATION: "Reorganisation",
         REVERSE_SPLIT: "Reverse split",
+        CAPITAL_REDUCTION: "Capital reduction",
+        RIGHTS: "Interim shares rebooked",
+        CREDIT: "Credit of new shares",
       },
       hint: {
         removeShares: "Check the position in Wealthfolio and remove the shares manually if Trade Republic took them back.",
@@ -645,6 +650,8 @@ const de: typeof en = {
       stockDividendReversal: "Storno einer Aktiendividende über {{shares}} Stück {{name}} ohne passende Aktiendividende.",
       rebookingReversal: "Umbuchung durch Trade Republic: hebt sich mit der Aktiendividende auf, gebucht {{when}}.",
       rebookingOriginal: "Umbuchung durch Trade Republic: aufgehoben durch das Storno, gebucht {{when}}.",
+      rightsCredited: "Bezugsrechte eingebucht und {{when}} ohne neue Aktien oder Geld wieder ausgebucht; beide Zeilen heben sich auf.",
+      rightsLapsed: "Bezugsrechte verfallen; hebt sich mit ihrer Einbuchung {{when}} auf.",
       split:
         "Split von {{name}} ({{shares}} Stück): das Verhältnis lässt sich nicht bestimmen, weil diese Datei vor dem Split keine {{symbol}}-Stücke enthält.",
       stockDividendNoPrice: "Aktiendividende über {{shares}} Stück {{name}} ohne Wert je Stück im Export.",
@@ -669,6 +676,9 @@ const de: typeof en = {
         ADR_DISCONTINUATION: "ADR-Einstellung",
         REORGANISATION: "Reorganisation",
         REVERSE_SPLIT: "Reverse Split",
+        CAPITAL_REDUCTION: "Kapitalherabsetzung",
+        RIGHTS: "Umbuchung der Interimsstücke",
+        CREDIT: "Einbuchung neuer Aktien",
       },
       hint: {
         removeShares: "Prüfe die Position in Wealthfolio und entferne die Stücke von Hand, falls Trade Republic sie zurückgebucht hat.",

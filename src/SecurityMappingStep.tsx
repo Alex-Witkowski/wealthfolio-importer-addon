@@ -178,8 +178,8 @@ function SecurityRow({
         </div>
       ) : (
         <TickerSearchInput
-          // Search by security name first; fall back to the ISIN when the CSV has no name.
-          defaultQuery={info.name || info.isin}
+          // Search by the file's symbol (ISIN) first; fall back to the name when it has none.
+          defaultQuery={info.isin || info.name}
           onSelect={onMapped}
           ctx={ctx}
         />

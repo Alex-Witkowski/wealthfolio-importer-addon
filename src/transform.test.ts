@@ -498,6 +498,20 @@ describe("Tax-only CASH types", () => {
     expect(activities[1]).toMatchObject({ accountId: "cash", activityType: "CREDIT", subtype: "TAX_REFUND", amount: "452.6" });
   });
 
+  it("CASH/MANUAL tax correction → CREDIT/TAX_REFUND; other MANUAL rows stay unsupported", () => {
+    const { activities, skipped } = transform(
+      [
+        row({ category: "CASH", type: "MANUAL", amount: "1.56", description: "Tax Correction February 2022 - DE000WNDL3T2" }),
+        row({ category: "CASH", type: "MANUAL", amount: "5", description: "Something else", transaction_id: "m2" }),
+      ],
+      CONFIG,
+    );
+    expect(activities).toHaveLength(1);
+    expect(activities[0]).toMatchObject({ accountId: "cash", activityType: "CREDIT", subtype: "TAX_REFUND", amount: "1.56" });
+    expect(activities[0].comment).toContain("Tax correction");
+    expect(skipped[0].reason).toContain("CASH/MANUAL isn't supported yet");
+  });
+
   it("a tax-only row without cash effect is skipped", () => {
     const { activities, skipped } = transform([row({ category: "CASH", type: "EARNINGS", amount: "0", tax: "0" })], CONFIG);
     expect(activities).toHaveLength(0);
@@ -613,6 +627,77 @@ describe("Corporate actions", () => {
     expect(sell).toMatchObject({ symbol: "OLD1", quantity: "15", unitPrice: "0", fee: "0", amount: "0" });
     expect(sell.comment).toContain("written off as worthless");
     expect(activities.filter((a) => a.activityType === "TRANSFER_OUT")).toHaveLength(1); // only the BUY funding
+  });
+
+  it("WRITE_OFF → SELL at 0 like WORTHLESS", () => {
+    const { activities, skipped } = transform(
+      [buy({ shares: "3", price: "2", amount: "-6" }), action("WRITE_OFF", "OLD1", "-3")],
+      CONFIG,
+    );
+    expect(skipped).toHaveLength(0);
+    expect(activities.find((a) => a.activityType === "SELL")).toMatchObject({ symbol: "OLD1", quantity: "3", unitPrice: "0", amount: "0" });
+  });
+
+  it("capital reduction via an interim ISIN: CAPITAL_REDUCTION/RIGHTS, then RIGHTS/CREDIT, carry the cost basis", () => {
+    const t1 = "2022-03-03T22:47:00.000Z";
+    const t2 = "2022-03-03T23:06:00.000Z";
+    const { activities, skipped } = transform(
+      [
+        buy({ shares: "10", price: "3", amount: "-30", datetime: "2021-01-04T10:00:00.000Z" }),
+        action("CAPITAL_REDUCTION", "OLD1", "-10", { datetime: t1 }),
+        action("RIGHTS", "TMP1", "3.3333", { datetime: t1, transaction_id: "r-in" }),
+        action("RIGHTS", "TMP1", "-3", { datetime: t2, transaction_id: "r-out" }),
+        action("CREDIT", "NEW1", "3", { datetime: t2 }),
+      ],
+      CONFIG,
+    );
+    expect(skipped).toHaveLength(0);
+    const legs = activities.filter((a) => a.isExternal);
+    expect(legs.map((a) => [a.activityType, a.symbol, a.quantity])).toEqual([
+      ["TRANSFER_OUT", "OLD1", "10"],
+      ["TRANSFER_IN", "TMP1", "3.3333"],
+      ["TRANSFER_OUT", "TMP1", "3"],
+      ["TRANSFER_IN", "NEW1", "3"],
+    ]);
+    expect(legs[0].comment).toContain("Capital reduction: OLD1 -> TMP1");
+    expect(legs[3].comment).toContain("Interim shares rebooked: TMP1 -> NEW1");
+    // 30 € over 3.3333 interim shares, 3 of them move on
+    expect(Number(legs[1].quantity) * Number(legs[1].unitPrice)).toBeCloseTo(30, 6);
+    expect(Number(legs[3].quantity) * Number(legs[3].unitPrice)).toBeCloseTo((30 * 3) / 3.3333, 6);
+  });
+
+  it("a RIGHTS leg without a partner stays an unsupported corporate action", () => {
+    const { activities, skipped } = transform([action("RIGHTS", "TMP1", "3")], CONFIG);
+    expect(activities).toHaveLength(0);
+    expect(skipped[0].reason).toContain("Corporate action RIGHTS isn't supported yet");
+  });
+
+  it("CAPITAL_INCR_CASH credited and lapsed (+n / -n, no cash) cancel out", () => {
+    const { activities, skipped } = transform(
+      [
+        action("CAPITAL_INCR_CASH", "RGT1", "10", { datetime: "2021-06-17T20:36:00.000Z", transaction_id: "c-in" }),
+        action("CAPITAL_INCR_CASH", "RGT1", "-10", { datetime: "2021-07-23T20:18:00.000Z", transaction_id: "c-out" }),
+      ],
+      CONFIG,
+    );
+    expect(activities).toHaveLength(0);
+    expect(skipped.map((s) => s.kind)).toEqual(["netted", "netted"]);
+    expect(skipped[0].reason).toContain("Subscription rights credited and removed again 2021-07-23");
+    expect(skipped[1].reason).toContain("Subscription rights lapsed");
+  });
+
+  it("CAPITAL_INCR_CASH removed together with another leg (rights exercised) isn't netted", () => {
+    const t = "2021-07-23T20:18:00.000Z";
+    const { skipped } = transform(
+      [
+        action("CAPITAL_INCR_CASH", "RGT1", "10", { datetime: "2021-06-17T20:36:00.000Z", transaction_id: "c-in" }),
+        action("CAPITAL_INCR_CASH", "RGT1", "-10", { datetime: t, transaction_id: "c-out" }),
+        action("CAPITAL_INCR_CASH", "OLD1", "5", { datetime: t, transaction_id: "c-new" }),
+      ],
+      CONFIG,
+    );
+    expect(skipped).toHaveLength(3);
+    expect(skipped.every((s) => s.kind === "missing")).toBe(true);
   });
 
   it("SPLIT → Wealthfolio SPLIT with ratio (held + n) / held from the file", () => {

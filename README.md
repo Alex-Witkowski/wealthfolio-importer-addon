@@ -135,7 +135,7 @@ exported.
 | Income | Dividend, fund distribution, share-exchange cash, interest (DIVIDEND / INTEREST in the payout currency, withholding tax in its tax field) | Dividende, Zinsen (net, cancellations netted out) |
 | Cash | Deposits, withdrawals, card payments, direct debits (DEPOSIT / WITHDRAWAL, or TRANSFER via transfer pattern) | Einlage / Entnahme (DEPOSIT / WITHDRAWAL, or TRANSFER via transfer pattern) |
 | Fees and taxes | Card fee, referral bonus, Vorabpauschale, tax adjustments (FEE, CREDIT, TAX) | FEE, TAX, Steuerrückerstattung |
-| Corporate actions | Splits, stock dividends, reinvestment, share exchange / ADR / reverse split into a new ISIN, worthless write-off | Depot migration (skipped) |
+| Corporate actions | Splits, stock dividends, reinvestment, share exchange / ADR / reverse split / capital reduction into a new ISIN, lapsed subscription rights (netted), worthless write-off | Depot migration (skipped) |
 
 The exact mapping of every type is documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (German).
 

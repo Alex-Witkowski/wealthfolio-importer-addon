@@ -34,6 +34,22 @@ const SECURITY_EXCHANGE = new Map<string, string>([
   ["REVERSE_SPLIT", "Reverse split"],
 ]);
 
+// CORPORATE_ACTION types that form an exchange with a leg of another of these
+// types at the same timestamp, e.g. a capital reduction books the old ISIN out
+// as CAPITAL_REDUCTION and the reduced shares in as RIGHTS on an interim ISIN;
+// a day later the interim ISIN leaves as RIGHTS and the new shares arrive as
+// CREDIT. The label is the outgoing leg's. A leg without a partner stays
+// unsupported.
+const CHAINED_EXCHANGE = new Map<string, string>([
+  ["CAPITAL_REDUCTION", "Capital reduction"],
+  ["RIGHTS", "Interim shares rebooked"],
+  ["CREDIT", "Credit of new shares"],
+]);
+
+// CASH/MANUAL rows Trade Republic uses for tax corrections ("Tax Correction
+// February 2022 - <ISIN>"); booked like TAX_ONLY. Other MANUAL rows stay unsupported.
+const MANUAL_TAX = /^tax correction\b/i;
+
 type Skip = { reason: Msg; kind: SkipKind; hint?: Msg };
 // Outcome of a row handled by planSpecialRows: the activities it becomes (may
 // be empty when another row books its effect) or why it is skipped.
@@ -81,7 +97,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 //   - DIVIDEND_REINVESTMENT becomes a BUY funded from the cash account with the
 //     negative DIVIDEND row TR books for it (the cash dividend itself was
 //     already booked as income);
-//   - WORTHLESS becomes a SELL at 0.
+//   - WORTHLESS and WRITE_OFF become a SELL at 0;
+//   - CAPITAL_INCR_CASH +n / -n on the same ISIN without cash and without other
+//     legs at the time of the -n are subscription rights that were credited
+//     and lapsed: both rows cancel out.
 //   If the file doesn't hold the shares, the rows are skipped rather than
 //   booked with a made-up cost or ratio.
 function planSpecialRows(rows: TrRow[], config: BrokerConfig): Map<string, Planned> {
@@ -137,6 +156,30 @@ function planSpecialRows(rows: TrRow[], config: BrokerConfig): Map<string, Plann
     const partner = closest(candidates, neg);
     skip(neg, msg("skip.tr.rebookingReversal", whenParams(neg, partner)), "netted");
     skip(partner, msg("skip.tr.rebookingOriginal", whenParams(partner, neg)), "netted");
+  }
+
+  // ── Subscription rights credited and lapsed (+n / -n) ─────────────────────
+  // Exercised rights come with the new shares at the time of the -n, and sold
+  // rights move cash; both stay unsupported rather than being netted away.
+  const moves = (r: TrRow) => Math.round((num(r.amount) + num(r.fee) + num(r.tax)) * 100) !== 0;
+  const rights = rows.filter((r) => r.category === "CORPORATE_ACTION" && r.type === "CAPITAL_INCR_CASH");
+  for (const neg of rights.filter((r) => num(r.shares) < 0)) {
+    const candidates = rights.filter(
+      (r) =>
+        num(r.shares) > 0 &&
+        !plan.has(r.transaction_id) &&
+        r.symbol === neg.symbol &&
+        num(r.shares) === -num(neg.shares) &&
+        time(r) <= time(neg),
+    );
+    const others = rows.some(
+      (x) => x !== neg && x.category === "CORPORATE_ACTION" && x.datetime === neg.datetime,
+    );
+    if (candidates.length === 0 || others || moves(neg)) continue;
+    const partner = closest(candidates, neg);
+    if (moves(partner)) continue;
+    skip(neg, msg("skip.tr.rightsLapsed", whenParams(neg, partner)), "netted");
+    skip(partner, msg("skip.tr.rightsCredited", whenParams(partner, neg)), "netted");
   }
 
   // ── Positions (FIFO) and corporate actions, in time order ─────────────────
@@ -198,7 +241,7 @@ function planSpecialRows(rows: TrRow[], config: BrokerConfig): Map<string, Plann
     }
     if (r.category !== "CORPORATE_ACTION" || plan.has(r.transaction_id)) continue;
 
-    if (r.type === "WORTHLESS") {
+    if (r.type === "WORTHLESS" || r.type === "WRITE_OFF") {
       relieve(r.symbol, shares);
       book(r, {
         ...security(r, "SELL", r.datetime, shares, "0", `${r.name} - written off as worthless${timeTag(r.datetime)}`),
@@ -294,23 +337,31 @@ function planSpecialRows(rows: TrRow[], config: BrokerConfig): Map<string, Plann
       continue;
     }
 
-    const label = SECURITY_EXCHANGE.get(r.type);
-    if (!label) continue;
+    const chained = CHAINED_EXCHANGE.has(r.type);
+    if (!SECURITY_EXCHANGE.has(r.type) && !chained) continue;
     const legs = sorted.filter(
-      (x) => x.category === "CORPORATE_ACTION" && x.type === r.type && x.datetime === r.datetime,
+      (x) =>
+        x.category === "CORPORATE_ACTION" &&
+        x.datetime === r.datetime &&
+        !plan.has(x.transaction_id) &&
+        (chained ? CHAINED_EXCHANGE.has(x.type) : x.type === r.type),
     );
     const out = legs.filter((x) => num(x.shares) < 0);
     const inn = legs.filter((x) => num(x.shares) > 0);
     const skipAll = (reason: Msg, hint: Msg) => legs.forEach((x) => skip(x, reason, "missing", hint));
-    const labelParams = { label, labelKey: `skip.tr.exchange.${r.type}` };
     if (out.length !== 1 || inn.length !== 1 || out[0].symbol === inn[0].symbol) {
+      if (chained) continue; // no partner: reported as an unsupported corporate action
+      const params = { label: SECURITY_EXCHANGE.get(r.type), labelKey: `skip.tr.exchange.${r.type}` };
       skipAll(
-        msg("skip.tr.exchangeLegs", { ...labelParams, out: out.length, in: inn.length }),
+        msg("skip.tr.exchangeLegs", { ...params, out: out.length, in: inn.length }),
         msg("skip.tr.hint.exchange"),
       );
       continue;
     }
     const [o, i] = [out[0], inn[0]];
+    const labelType = chained ? o.type : r.type;
+    const label = (chained ? CHAINED_EXCHANGE : SECURITY_EXCHANGE).get(labelType);
+    const labelParams = { label, labelKey: `skip.tr.exchange.${labelType}` };
     const outQty = Math.abs(num(o.shares));
     const inQty = num(i.shares);
     if (held(o.symbol) + 1e-9 < outQty) {
@@ -748,7 +799,7 @@ export function transform(rows: TrRow[], config: BrokerConfig): TransformResult 
         continue;
       }
 
-      const taxLabel = TAX_ONLY.get(typ);
+      const taxLabel = TAX_ONLY.get(typ) ?? (typ === "MANUAL" && MANUAL_TAX.test(desc ?? "") ? "Tax correction" : undefined);
       if (taxLabel) {
         const net = amt + num(tax);
         const what = `${taxLabel}${r.name ? ` - ${r.name}` : ""}${r.symbol ? ` (${r.symbol})` : ""}`;
