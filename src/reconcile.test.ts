@@ -36,6 +36,8 @@ describe("cashEffect", () => {
   it("follows Wealthfolio: amount is the cash flow, sign by type", () => {
     expect(cashEffect(act({ activityType: "SELL", amount: "293.5" }))).toBe(293.5);
     expect(cashEffect(act({ activityType: "BUY", amount: "201.5" }))).toBe(-201.5);
+    // charges above the proceeds: an outflow, like Wealthfolio's sell_is_proven_negative
+    expect(cashEffect(act({ activityType: "SELL", quantity: "-0.3333", unitPrice: "1.002874", fee: "1", amount: "-0.6657420958" }))).toBeCloseTo(-0.6657, 4);
     expect(cashEffect(act({ activityType: "DIVIDEND", amount: "8", tax: "1" }))).toBe(8);
     expect(cashEffect(cash("cash", "TAX", "0.33"))).toBe(-0.33);
     expect(cashEffect(cash("cash", "TRANSFER_OUT", "100"))).toBe(-100);

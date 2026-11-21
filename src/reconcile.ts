@@ -43,6 +43,9 @@ export function cashEffect(a: ActivityImportEx): number {
   const type = a.activityType;
   // A dividend in kind is income plus a cash-neutral buy (Wealthfolio expands it).
   if (type === "DIVIDEND" && a.subtype === "DIVIDEND_IN_KIND") return 0;
+  // A SELL whose charges exceed the proceeds is an outflow (Wealthfolio's
+  // sell_is_proven_negative: quantity × price − fee − tax < 0 and |amount| matches).
+  if (type === "SELL" && Math.abs(num(a.quantity) * num(a.unitPrice)) - num(a.fee) - num(a.tax) < 0) return -amount;
   if (CASH_IN.has(type)) return amount;
   if (CASH_OUT.has(type)) return -amount;
   // Transfers move cash only when they are cash transfers; a security transfer

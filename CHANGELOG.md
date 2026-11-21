@@ -14,6 +14,10 @@
 
 - **Trade Republic: dividend fees.** A fee on a dividend row (e.g. the ADR fee) is now deducted from the cash received; it was ignored, so the cash account ended up too high. Only dividends with a fee change (amount and a `[fee …]` note in the comment), so they show up once more as new on a re-import.
 
+- **Trade Republic: sales whose fee exceeds the proceeds** (e.g. selling a fraction of a share for a 1 € fee) are now funded from the cash account; the cash went the wrong way before. Wealthfolio books such a SELL as an outflow, and the pre-import check now does too.
+- **Trade Republic: rebooked sales with flipped signs.** The export lists the sale booked again after a `SELL_CANCELLED` with every sign flipped (amount negative, fee positive), so the file's balance was off from the app by twice that sale's cash. Such a row is read with its signs turned back, both for the import and for the balance check.
+- **Example file** [`tr-capital-measures.csv`](src/__fixtures__/tr-capital-measures.csv) with the Windeln.de → Nakiki case and a dividend with an ADR fee, checked end to end by an integration test.
+
 ### Changed
 
 - **Security mapping search starts with the file's symbol (ISIN)** and only falls back to the name when there is none (mapping step and *Change*).

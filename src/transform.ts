@@ -424,10 +424,18 @@ function planSpecialRows(rows: TrRow[], config: BrokerConfig): Map<string, Plann
   return plan;
 }
 
+// Trade Republic exports the sale it books again after a SELL_CANCELLED with
+// every sign flipped (amount negative, fee positive), so the file's balance is
+// off by twice the sale's cash against the app. A sale never has negative
+// proceeds, so such a row is read with its signs turned back: -1, else 1.
+function sellSign(r: TrRow): number {
+  return r.category === "TRADING" && r.type === "SELL" && num(r.amount) < 0 ? -1 : 1;
+}
+
 // Trade Republic's own cash balance as the export shows it: every row's cash
 // effect is amount + fee + tax (all signed). Used to check the import (#10).
 export function trBrokerCash(rows: TrRow[]): number {
-  return rows.reduce((sum, r) => sum + num(r.amount) + num(r.fee) + num(r.tax), 0);
+  return rows.reduce((sum, r) => sum + sellSign(r) * (num(r.amount) + num(r.fee) + num(r.tax)), 0);
 }
 
 export function transform(rows: TrRow[], config: BrokerConfig): TransformResult {
@@ -579,7 +587,7 @@ export function transform(rows: TrRow[], config: BrokerConfig): TransformResult 
       // Withheld tax goes into the tax field. Wealthfolio's tax field only holds
       // charges, so a tax refund (positive tax) becomes its own CREDIT/TAX_REFUND.
       const sellFee = Math.abs(num(fee));
-      const sellTaxSigned = num(tax);
+      const sellTaxSigned = sellSign(r) * num(tax);
       const sellTax = sellTaxSigned < 0 ? -sellTaxSigned : 0;
       const sellTaxRefund = sellTaxSigned > 0 ? sellTaxSigned : 0;
       const sellFeeStr = sellFee ? fmtAmt(sellFee) : "0";
@@ -612,6 +620,17 @@ export function transform(rows: TrRow[], config: BrokerConfig): TransformResult 
         );
       }
       const sellGroupId = `sell-${r.transaction_id}`;
+      if (proceeds < 0) {
+        // Charges above the proceeds (selling a fraction for a 1 € fee): the SELL
+        // takes cash from the portfolio account (Wealthfolio books it as an
+        // outflow when quantity × price − fee − tax is negative), so the cash
+        // account funds it beforehand, like a BUY, instead of receiving proceeds.
+        activities.push(
+          cashAct(cashAccountId, "TRANSFER_OUT", addSec(dt, -2), -proceeds, `Funds for ${r.symbol} (${r.name}) sale costs -> Portfolio${timeTag(dt)}`, undefined, sellGroupId),
+          cashAct(portfolioAccountId, "TRANSFER_IN", addSec(dt, -1), -proceeds, `Funds from Cash for ${r.symbol} sale costs${timeTag(dt)}`, undefined, sellGroupId),
+        );
+        continue;
+      }
       activities.push(
         cashAct(
           portfolioAccountId,

@@ -102,6 +102,7 @@ out with a throwaway account:
 | Broker | File | Format |
 | --- | --- | --- |
 | Trade Republic | [`tr-sample.csv`](src/__fixtures__/tr-sample.csv) | `,`-separated, values in `"…"`, decimal point, UTC timestamps |
+| Trade Republic | [`tr-capital-measures.csv`](src/__fixtures__/tr-capital-measures.csv) | same layout: Windeln.de → Nakiki (capital reduction over an interim ISIN, lapsed subscription rights, cancelled and rebooked sale, tax corrections, write-off) and a dividend with an ADR fee |
 | Scalable Capital | [`scalable-sample.csv`](src/__fixtures__/scalable-sample.csv) | `;`-separated, decimal comma, UTF-8 with BOM, Europe/Berlin local time |
 | PDF statements | [`src/__fixtures__/pdf/`](src/__fixtures__/pdf) | the text the importer reads from a PDF (buy, sell, dividend per broker), not PDFs themselves |
 

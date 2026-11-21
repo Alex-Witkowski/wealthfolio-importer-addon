@@ -6,7 +6,8 @@ import { fileURLToPath } from "url";
 import Papa from "papaparse";
 import { describe, expect, it } from "vitest";
 import { isCashSymbol } from "./common";
-import { transform } from "./transform";
+import { cashDifference, reconcile } from "./reconcile";
+import { transform, trBrokerCash } from "./transform";
 import type { BrokerConfig, TrRow } from "./types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -139,6 +140,31 @@ describe("SELL", () => {
     const sells = activities.filter((a) => a.activityType === "SELL");
     expect(sells).toHaveLength(1);
     expect(sells[0].date).toBe("2023-01-24T15:20:22.019Z");
+    // the rebooked sale comes with flipped signs; it costs 0.67, like the original
+    expect(sells[0]).toMatchObject({ fee: "1" });
+    const funding = activities.filter((a) => a.transferGroupId === "sell-s2");
+    expect(funding.map((a) => [a.accountId, a.activityType, a.amount])).toEqual([
+      ["cash", "TRANSFER_OUT", "0.67"],
+      ["portfolio", "TRANSFER_IN", "0.67"],
+    ]);
+    // the file's balance reads that row the same way: -0.67 + 0.67 - 0.67
+    expect(trBrokerCash([
+      row({ ...sale, type: "SELL", amount: "0.33", fee: "-1.00" }),
+      row({ ...sale, type: "SELL_CANCELLED", amount: "-0.33", fee: "1.00" }),
+      row({ ...sale, type: "SELL", amount: "-0.33", fee: "1.00" }),
+    ])).toBeCloseTo(-0.67, 6);
+  });
+
+  it("a sale whose fee exceeds the proceeds is funded from the cash account", () => {
+    const { activities } = transform(
+      [row({ category: "TRADING", type: "SELL", symbol: "TMP1", shares: "-0.3333", price: "1.002874", amount: "0.33", fee: "-1.00", transaction_id: "s1" })],
+      CONFIG,
+    );
+    expect(activities.map((a) => [a.accountId, a.activityType, a.amount])).toEqual([
+      ["cash", "TRANSFER_OUT", "0.67"],
+      ["portfolio", "TRANSFER_IN", "0.67"],
+      ["portfolio", "SELL", "-0.6657420958"],
+    ]);
   });
 
   it("SELL_CANCELLED without a matching sale stays unsupported", () => {
@@ -1228,5 +1254,51 @@ describe("CSV fixture integration", () => {
     expect(activities.find((a) => a.subtype === "DIVIDEND_IN_KIND")).toMatchObject({ symbol: "NL0000000003", quantity: "2", amount: "3" });
     expect(activities.find((a) => a.activityType === "BUY" && a.symbol === "NL0000000003")).toMatchObject({ quantity: "0.5", unitPrice: "2" });
     expect(skipped.map((s) => s.kind)).toEqual(["netted"]);
+  });
+});
+
+// Windeln.de -> Nakiki (capital reduction over an interim ISIN, lapsed
+// subscription rights, a cancelled and rebooked sale of the fraction, tax
+// corrections, write-off) and a BioNTech dividend with an ADR fee; layout and
+// values as in a real Trade Republic export, ids and the deposit fabricated.
+describe("Integration: tr-capital-measures.csv", () => {
+  const csv = readFileSync(join(__dirname, "__fixtures__/tr-capital-measures.csv"), "utf-8");
+  const { data: rows } = Papa.parse<TrRow>(csv, { header: true, skipEmptyLines: true });
+  const { activities, skipped } = transform(rows, CONFIG);
+  const check = reconcile(activities, CONFIG, { currency: "EUR", amount: trBrokerCash(rows) });
+
+  it("imports every row: only netted rows are skipped", () => {
+    expect(rows).toHaveLength(19);
+    expect(skipped.filter((s) => s.kind === "missing")).toEqual([]);
+    expect(skipped.map((s) => s.type).sort()).toEqual([
+      "CAPITAL_INCR_CASH",
+      "CAPITAL_INCR_CASH",
+      "CAPITAL_INCR_CASH",
+      "CAPITAL_INCR_CASH",
+      "SELL",
+      "SELL_CANCELLED",
+    ]);
+  });
+
+  it("the cash account matches Trade Republic's balance (dividend fee included)", () => {
+    expect(cashDifference(check)).toBe(0);
+    const dividend = activities.find((a) => a.activityType === "DIVIDEND")!;
+    expect(dividend).toMatchObject({ symbol: "US09075V1026", amount: "72.72", tax: "40.62" });
+    expect(dividend.comment).toContain("[fee 1.46 EUR]");
+  });
+
+  it("no negative position; Windeln.de, the interim ISIN and Nakiki end at 0", () => {
+    expect(check.negative).toEqual([]);
+    expect(check.holdings.map((h) => [h.symbol, h.quantity])).toEqual([["US09075V1026", 77]]);
+  });
+
+  it("the Windeln.de cost basis moves to Nakiki and is realised as a loss by the write-off", () => {
+    const nakiki = activities.find((a) => a.activityType === "TRANSFER_IN" && a.symbol === "DE000WNDL300")!;
+    expect(Number(nakiki.quantity) * Number(nakiki.unitPrice)).toBeCloseTo((52.6 * 3) / 3.3333, 6);
+    expect(activities.find((a) => a.activityType === "SELL" && a.symbol === "DE000WNDL300")).toMatchObject({
+      quantity: "3",
+      unitPrice: "0",
+      amount: "0",
+    });
   });
 });
