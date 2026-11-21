@@ -414,7 +414,12 @@ Weitere Konventionen:
    `missing` (nicht importiert – Wealthfolio weicht ab), bei `missing` mit `hint`, was
    der Nutzer tun kann. Die UI zeigt das als Spalte „Status“ und sortiert `missing` nach
    oben.
-7. **`BUY`/`SELL` tragen immer `amount = tradeFinalCash(...)`** (`common.ts`): exakt
+7. **Trade Republic (CSV): `BUY`/`SELL` tragen den gebuchten Geldbetrag** – `amount` =
+   Kurswert aus dem Export (auf Cent gerundet) ± Gebühr ± Steuer, nicht Menge × Stückpreis.
+   Sonst blieb je Trade bis zu 0,005 € Rundung auf dem Depotkonto liegen. Mit älteren
+   Versionen (exakter Wert) importierte Trades erkennt `findExistingMatches` weiter
+   (Betrag bis 0,02 € Abweichung), `checkImport` nicht mehr. Scalable und PDF bleiben bei:
+   **`BUY`/`SELL` tragen `amount = tradeFinalCash(...)`** (`common.ts`): exakt
    `Menge × Stückpreis + Gebühr + Steuer` (BUY) bzw. `− Gebühr − Steuer` (SELL), mit BigInt statt Float
    berechnet. Wealthfolio bildet den Duplikat-Fingerabdruck (`idempotencyKey`) aus dem
    exakten `amount`. Fehlt er, leitet Wealthfolio ihn beim Anlegen genau so ab und

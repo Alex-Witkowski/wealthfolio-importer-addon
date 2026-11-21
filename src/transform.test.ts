@@ -163,8 +163,22 @@ describe("SELL", () => {
     expect(activities.map((a) => [a.accountId, a.activityType, a.amount])).toEqual([
       ["cash", "TRANSFER_OUT", "0.67"],
       ["portfolio", "TRANSFER_IN", "0.67"],
-      ["portfolio", "SELL", "-0.6657420958"],
+      ["portfolio", "SELL", "-0.67"],
     ]);
+  });
+
+  it("trades carry the cash Trade Republic booked (gross rounded to the cent), so nothing stays on the portfolio account", () => {
+    const { activities } = transform(
+      [
+        row({ category: "TRADING", type: "BUY", symbol: "IE00B4L5Y983", shares: "5", price: "54.645", amount: "-273.23", fee: "-1.00", transaction_id: "b1" }),
+        row({ category: "TRADING", type: "SELL", symbol: "IE00B4L5Y983", shares: "-5", price: "55.851", amount: "279.26", fee: "-1.00", tax: "-0.5", datetime: "2024-02-01T10:00:00.000Z", transaction_id: "s1" }),
+      ],
+      CONFIG,
+    );
+    expect(activities.find((a) => a.activityType === "BUY")!.amount).toBe("274.23"); // not 274.225
+    expect(activities.find((a) => a.activityType === "SELL")!.amount).toBe("277.76"); // not 277.755
+    const check = reconcile(activities, CONFIG);
+    expect(check.portfolioCash).toEqual({});
   });
 
   it("SELL_CANCELLED without a matching sale stays unsupported", () => {

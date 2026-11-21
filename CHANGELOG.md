@@ -20,6 +20,7 @@
 
 ### Changed
 
+- **Trade Republic: trades carry the cash Trade Republic booked.** `amount` of a BUY/SELL is the export's cent-rounded gross ± fee ± tax instead of the exact quantity × price, so no rounding is left on the securities account (up to half a cent per trade before). **Upgrade note:** trades imported with an earlier version have the exact amount; Wealthfolio's own duplicate check no longer sees them, but the addon still shows them as already in Wealthfolio (same shares, time and amount within 0.02), so they are not imported twice.
 - **Security mapping search starts with the file's symbol (ISIN)** and only falls back to the name when there is none (mapping step and *Change*).
 
 ## [3.12.2] - 2026-11-09

@@ -249,7 +249,7 @@ function planSpecialRows(rows: TrRow[], config: BrokerConfig): Map<string, Plann
 
     if (r.category === "TRADING" && r.type === "BUY") {
       const fee = Math.abs(num(r.fee)) + Math.abs(num(r.tax));
-      addLot(r.symbol, shares, Number(tradeFinalCash("BUY", r.shares, r.price, fee ? fmtAmt(fee) : "0")));
+      addLot(r.symbol, shares, Math.abs(num(r.amount)) + fee); // what Trade Republic charged
       continue;
     }
     if (r.category === "TRADING" && r.type === "SELL") {
@@ -496,7 +496,9 @@ export function transform(rows: TrRow[], config: BrokerConfig): TransformResult 
     // ── TRADING / BUY ───────────────────────────────────────────────────────
     if (category === "TRADING" && typ === "BUY") {
       // Fee and tax go into their own fields (Wealthfolio reports them separately);
-      // amount stays the final cash, gross + fee + tax.
+      // amount is the cash Trade Republic charged, gross + fee + tax, with the gross
+      // rounded to the cent as in the export (not quantity × price), so no rounding
+      // residue stays on the portfolio account.
       const buyFee = Math.abs(num(fee));
       const buyTax = Math.abs(num(tax));
       const buyFeeStr = buyFee ? fmtAmt(buyFee) : "0";
@@ -528,7 +530,7 @@ export function transform(rows: TrRow[], config: BrokerConfig): TransformResult 
           unitPrice: r.price,
           fee: buyFeeStr,
           tax: buyTaxStr,
-          amount: tradeFinalCash("BUY", r.shares, r.price, buyFeeStr, buyTaxStr),
+          amount: fmtAmt(totalCash),
           currency: quoteCcy,
           comment: `${r.name} - Stockperk gift buy (funded by TR, not own funds)${timeTag(dt)}`,
           isValid: true,
@@ -573,7 +575,7 @@ export function transform(rows: TrRow[], config: BrokerConfig): TransformResult 
         unitPrice: r.price,
         fee: buyFeeStr,
         tax: buyTaxStr,
-        amount: tradeFinalCash("BUY", r.shares, r.price, buyFeeStr, buyTaxStr),
+        amount: fmtAmt(totalCash),
         currency: quoteCcy,
         comment: (desc ? `${r.name} - ${desc}` : r.name) + timeTag(dt),
         isValid: true,
@@ -608,7 +610,9 @@ export function transform(rows: TrRow[], config: BrokerConfig): TransformResult 
         unitPrice: r.price,
         fee: sellFeeStr,
         tax: sellTaxStr,
-        amount: tradeFinalCash("SELL", r.shares, r.price, sellFeeStr, sellTaxStr),
+        // Cash from the sale as Trade Republic booked it (the export's gross, not
+        // quantity × price); a tax refund is its own CREDIT below.
+        amount: (proceeds - sellTaxRefund < 0 ? "-" : "") + fmtAmt(proceeds - sellTaxRefund),
         currency: quoteCcy,
         comment: (desc ? `${r.name} - ${desc}` : r.name) + timeTag(dt),
         isValid: true,
