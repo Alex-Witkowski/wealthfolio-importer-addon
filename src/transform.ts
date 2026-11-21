@@ -158,6 +158,27 @@ function planSpecialRows(rows: TrRow[], config: BrokerConfig): Map<string, Plann
     skip(partner, msg("skip.tr.rebookingOriginal", whenParams(partner, neg)), "netted");
   }
 
+  // ── Cancelled sales ───────────────────────────────────────────────────────
+  // TRADING/SELL_CANCELLED reverses an earlier SELL of the same ISIN, share
+  // count, price and value date; Trade Republic usually rebooks the sale right
+  // after it, and that new SELL is imported as usual.
+  const sells = rows.filter((r) => r.category === "TRADING" && r.type === "SELL");
+  for (const c of rows.filter((r) => r.category === "TRADING" && r.type === "SELL_CANCELLED")) {
+    const candidates = sells.filter(
+      (r) =>
+        !plan.has(r.transaction_id) &&
+        r.symbol === c.symbol &&
+        num(r.shares) === -num(c.shares) &&
+        num(r.price) === num(c.price) &&
+        r.date === c.date &&
+        time(r) < time(c),
+    );
+    if (candidates.length === 0) continue;
+    const original = closest(candidates, c);
+    skip(c, msg("skip.tr.sellCancelled", whenParams(c, original)), "netted");
+    skip(original, msg("skip.tr.sellCancelledOriginal", { date: day(c) }), "netted");
+  }
+
   // ── Subscription rights credited and lapsed (+n / -n) ─────────────────────
   // Exercised rights come with the new shares at the time of the -n, and sold
   // rights move cash; both stay unsupported rather than being netted away.
@@ -232,7 +253,7 @@ function planSpecialRows(rows: TrRow[], config: BrokerConfig): Map<string, Plann
       continue;
     }
     if (r.category === "TRADING" && r.type === "SELL") {
-      relieve(r.symbol, shares);
+      if (!plan.has(r.transaction_id)) relieve(r.symbol, shares); // a cancelled sale didn't happen
       continue;
     }
     if (r.category === "DELIVERY" && r.type === "FREE_RECEIPT") {
@@ -743,7 +764,12 @@ export function transform(rows: TrRow[], config: BrokerConfig): TransformResult 
       const label = DIVIDEND_LIKE.get(typ);
       if (label) {
         const taxAmt = num(tax);
-        const netCash = absAmt + taxAmt;
+        // A fee (e.g. the ADR fee of a depositary receipt) is part of the cash
+        // received; it only goes into the comment, so dividends without a fee
+        // keep their amount and comment (duplicate fingerprint).
+        const feeAmt = -Math.abs(num(fee));
+        const netCash = absAmt + taxAmt + feeAmt;
+        const feeNote = feeAmt ? ` [fee ${fmtAmt(-feeAmt)} ${r.currency || cashCurrency}]` : "";
         const sharesVal = r.shares || "1";
         const quoteCcy = r.original_currency || r.currency || cashCurrency;
 
@@ -768,7 +794,7 @@ export function transform(rows: TrRow[], config: BrokerConfig): TransformResult 
           // field, so Wealthfolio reports gross income and tax on one activity.
           amount: fmtAmt(netCash),
           tax: taxAmt < 0 ? fmtAmt(-taxAmt) : undefined,
-          comment: `${label} ${r.name}${original}${timeTag(dt)}`,
+          comment: `${label} ${r.name}${original}${feeNote}${timeTag(dt)}`,
           isValid: true,
           isDraft: false,
         });

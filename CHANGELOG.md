@@ -7,7 +7,12 @@
 - **Trade Republic: capital reductions over an interim ISIN.** `CAPITAL_REDUCTION`, `RIGHTS` and `CREDIT` legs at the same time form an exchange like `SHARE_EXCHANGE`, also mixed (old ISIN out as `CAPITAL_REDUCTION`, interim ISIN in as `RIGHTS`; later interim out as `RIGHTS`, new ISIN in as `CREDIT`). The cost basis moves along; a leg without a partner stays unsupported.
 - **Trade Republic: lapsed subscription rights.** `CAPITAL_INCR_CASH` +n / −n on the same ISIN without cash and without other legs at the time of the −n cancel out (skipped as netted).
 - **Trade Republic: `WRITE_OFF`** is booked like `WORTHLESS` (SELL at 0).
+- **Trade Republic: cancelled sales.** `TRADING/SELL_CANCELLED` cancels out with the sale it reverses (same ISIN, share count, price and value date); the sale Trade Republic books again afterwards is imported as usual. Before, the cancellation was skipped and the reversed sale stayed, which left a negative position and a cash difference.
 - **Trade Republic: `CASH/MANUAL` tax corrections** ("Tax Correction …") are booked like the other tax-only rows (TAX or CREDIT/TAX_REFUND).
+
+### Fixed
+
+- **Trade Republic: dividend fees.** A fee on a dividend row (e.g. the ADR fee) is now deducted from the cash received; it was ignored, so the cash account ended up too high. Only dividends with a fee change (amount and a `[fee …]` note in the comment), so they show up once more as new on a re-import.
 
 ### Changed
 

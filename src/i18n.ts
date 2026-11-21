@@ -289,6 +289,8 @@ const en = {
         "Stock dividend reversal of {{shares}} {{name}} shares without a matching stock dividend.",
       rebookingReversal: "Rebooking by Trade Republic: cancels out with the stock dividend booked {{when}}.",
       rebookingOriginal: "Rebooking by Trade Republic: cancelled by the reversal booked {{when}}.",
+      sellCancelled: "Cancellation of the sale booked {{when}}; the two rows cancel out.",
+      sellCancelledOriginal: "Sale cancelled by Trade Republic on {{date}}; the two rows cancel out.",
       rightsCredited: "Subscription rights credited and removed again {{when}} without new shares or cash; the two rows cancel out.",
       rightsLapsed: "Subscription rights lapsed; cancels out with their credit booked {{when}}.",
       split:
@@ -650,6 +652,8 @@ const de: typeof en = {
       stockDividendReversal: "Storno einer Aktiendividende über {{shares}} Stück {{name}} ohne passende Aktiendividende.",
       rebookingReversal: "Umbuchung durch Trade Republic: hebt sich mit der Aktiendividende auf, gebucht {{when}}.",
       rebookingOriginal: "Umbuchung durch Trade Republic: aufgehoben durch das Storno, gebucht {{when}}.",
+      sellCancelled: "Storno des Verkaufs, gebucht {{when}}; beide Zeilen heben sich auf.",
+      sellCancelledOriginal: "Verkauf von Trade Republic am {{date}} storniert; beide Zeilen heben sich auf.",
       rightsCredited: "Bezugsrechte eingebucht und {{when}} ohne neue Aktien oder Geld wieder ausgebucht; beide Zeilen heben sich auf.",
       rightsLapsed: "Bezugsrechte verfallen; hebt sich mit ihrer Einbuchung {{when}} auf.",
       split:

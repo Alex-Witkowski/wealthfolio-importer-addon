@@ -121,6 +121,34 @@ describe("BUY", () => {
 });
 
 describe("SELL", () => {
+  it("SELL_CANCELLED cancels out with its sale; the rebooked sale is imported", () => {
+    const sale = { category: "TRADING", symbol: "TMP1", price: "1.002874", date: "2022-03-08" };
+    const { activities, skipped } = transform(
+      [
+        row({ ...sale, type: "SELL", shares: "-0.3333", amount: "0.33", fee: "-1.00", datetime: "2022-03-08T11:48:07.245Z", transaction_id: "s1" }),
+        row({ ...sale, type: "SELL_CANCELLED", shares: "0.3333", amount: "-0.33", fee: "1.00", datetime: "2023-01-24T15:17:36.384Z", transaction_id: "c1" }),
+        row({ ...sale, type: "SELL", shares: "-0.3333", amount: "-0.33", fee: "1.00", datetime: "2023-01-24T15:20:22.019Z", transaction_id: "s2" }),
+      ],
+      CONFIG,
+    );
+    expect(skipped.map((s) => [s.type, s.kind])).toEqual([
+      ["SELL", "netted"],
+      ["SELL_CANCELLED", "netted"],
+    ]);
+    expect(skipped[0].reason).toContain("Sale cancelled by Trade Republic on 2023-01-24");
+    const sells = activities.filter((a) => a.activityType === "SELL");
+    expect(sells).toHaveLength(1);
+    expect(sells[0].date).toBe("2023-01-24T15:20:22.019Z");
+  });
+
+  it("SELL_CANCELLED without a matching sale stays unsupported", () => {
+    const { skipped } = transform(
+      [row({ category: "TRADING", type: "SELL_CANCELLED", symbol: "TMP1", shares: "1", price: "5", amount: "-5" })],
+      CONFIG,
+    );
+    expect(skipped[0]).toMatchObject({ kind: "missing" });
+  });
+
   it("produces SELL, TRANSFER_OUT portfolio, TRANSFER_IN cash", () => {
     const { activities, skipped } = transform(
       [
@@ -289,6 +317,31 @@ describe("CASH deposits and withdrawals", () => {
 });
 
 describe("DIVIDEND", () => {
+  it("a fee (ADR fee) is deducted from the cash received and noted in the comment", () => {
+    const { activities } = transform(
+      [
+        row({
+          category: "CASH",
+          type: "DIVIDEND",
+          symbol: "US09075V1026",
+          name: "BioNTech (ADR)",
+          shares: "77",
+          amount: "114.80",
+          fee: "-1.46",
+          tax: "-40.62",
+          original_amount: "108.67",
+          original_currency: "USD",
+        }),
+      ],
+      CONFIG,
+    );
+    const div = activities.find((a) => a.activityType === "DIVIDEND")!;
+    expect(div).toMatchObject({ amount: "72.72", tax: "40.62" });
+    expect(div.comment).toContain("[fee 1.46 EUR]");
+    const sweep = activities.filter((a) => a.activityType.startsWith("TRANSFER_"));
+    expect(sweep.map((a) => a.amount)).toEqual(["72.72", "72.72"]);
+  });
+
   it("EUR dividend produces one DIVIDEND (net amount, tax field) + TRANSFER_OUT portfolio + TRANSFER_IN cash", () => {
     const { activities } = transform(
       [
